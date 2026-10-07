@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Recast — Image Converter</title>
+  <meta name="description" content="Convert, crop, resize and rotate images between PNG, JPEG, WebP, AVIF, GIF, BMP, ICO, TIFF, PDF and SVG. Runs entirely in your browser.">
+  <meta name="theme-color" content="#f6f3f1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='16' fill='%232b59d1'/%3E%3Cpath d='M10 22V10h7a4 4 0 0 1 0 8h-7m7 0 5 4' fill='none' stroke='%23f6f3f1' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Newsreader:opsz,wght@6..72,400&display=swap">
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <p class="announce">Runs entirely in your browser. Your images are never uploaded.</p>
+
+  <header class="site-head">
+    <a class="wordmark" href="./">Recast</a>
+    <nav class="site-nav" aria-label="Primary">
+      <a href="#formats">Formats</a>
+      <a class="pill pill--ghost pill--sm" href="https://github.com/ryanpradnya/image-conversion">Source <span aria-hidden="true">→</span></a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="wash" aria-hidden="true"></div>
+      <h1>Convert any image, right here.</h1>
+      <p class="lede">Crop, resize, rotate and re-encode between ten formats. No upload, no account, no watermark.</p>
+    </section>
+
+    <section class="bench" id="app" aria-label="Image editor">
+      <div class="stage" id="stage">
+        <label class="drop" id="drop">
+          <input type="file" id="file" accept="image/*,.heic,.heif,.tif,.tiff,.ico,.svg,.avif,.bmp">
+          <span class="drop__title">Drop an image</span>
+          <span class="drop__sub">or click to browse · paste with <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>V</kbd></span>
+          <span class="drop__formats">PNG · JPEG · WebP · AVIF · GIF · BMP · ICO · SVG · HEIC · TIFF</span>
+        </label>
+
+        <div class="viewport" id="viewport" hidden>
+          <div class="frame" id="frame">
+            <canvas id="view"></canvas>
+            <span class="shade" id="shade" aria-hidden="true"></span>
+            <div class="crop" id="crop" tabindex="0" role="group" aria-label="Crop area. Arrow keys move it, Shift moves faster.">
+              <span class="crop__grid" aria-hidden="true"></span>
+              <span class="h" data-h="nw"></span><span class="h" data-h="n"></span><span class="h" data-h="ne"></span>
+              <span class="h" data-h="w"></span><span class="h" data-h="e"></span>
+              <span class="h" data-h="sw"></span><span class="h" data-h="s"></span><span class="h" data-h="se"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="stage-bar" id="stageBar" hidden>
+          <p class="meta" id="meta"></p>
+          <button type="button" class="pill pill--ghost pill--sm" id="replace">Replace</button>
+        </div>
+        <p class="status" id="status" role="status" aria-live="polite"></p>
+      </div>
+
+      <form class="panel" id="panel" novalidate>
+        <fieldset class="panel__body" id="controls" disabled>
+          <fieldset class="group">
+            <legend>Convert to</legend>
+            <div class="chips chips--formats" id="formats-list"></div>
+            <p class="hint" id="fmtHint"></p>
+            <div class="row" id="qualityRow">
+              <label for="quality">Quality</label>
+              <input type="range" id="quality" min="1" max="100" value="85">
+              <output for="quality" id="qualityOut" aria-hidden="true">85</output>
+            </div>
+            <div class="row" id="bgRow">
+              <label for="bg">Background</label>
+              <input type="color" id="bg" value="#ffffff">
+              <span class="row__note">fills transparency</span>
+            </div>
+          </fieldset>
+
+          <fieldset class="group">
+            <legend>Crop</legend>
+            <div class="chips" id="aspects">
+              <label class="chip"><input type="radio" name="aspect" value="free" checked><span>Free</span></label>
+              <label class="chip"><input type="radio" name="aspect" value="orig"><span>Original</span></label>
+              <label class="chip"><input type="radio" name="aspect" value="1"><span>1:1</span></label>
+              <label class="chip"><input type="radio" name="aspect" value="1.3333"><span>4:3</span></label>
+              <label class="chip"><input type="radio" name="aspect" value="1.5"><span>3:2</span></label>
+              <label class="chip"><input type="radio" name="aspect" value="1.7778"><span>16:9</span></label>
+              <label class="chip"><input type="radio" name="aspect" value="0.5625"><span>9:16</span></label>
+            </div>
+            <div class="row">
+              <span class="readout" id="cropOut">—</span>
+              <button type="button" class="link" id="cropReset">Reset crop</button>
+            </div>
+          </fieldset>
+
+          <fieldset class="group">
+            <legend>Resize</legend>
+            <div class="size">
+              <label class="field"><span>Width</span><input type="number" id="outW" min="1" max="16384" inputmode="numeric"></label>
+              <button type="button" class="lock" id="lock" aria-pressed="true" aria-label="Lock aspect ratio">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z"/></svg>
+              </button>
+              <label class="field"><span>Height</span><input type="number" id="outH" min="1" max="16384" inputmode="numeric"></label>
+            </div>
+            <div class="chips" id="scales">
+              <button type="button" class="chip chip--btn" data-scale="0.25">25%</button>
+              <button type="button" class="chip chip--btn" data-scale="0.5">50%</button>
+              <button type="button" class="chip chip--btn" data-scale="0.75">75%</button>
+              <button type="button" class="chip chip--btn" data-scale="1">100%</button>
+            </div>
+          </fieldset>
+
+          <fieldset class="group">
+            <legend>Rotate &amp; flip</legend>
+            <div class="tools">
+              <button type="button" class="tool" data-act="rotL" aria-label="Rotate left 90°" title="Rotate left">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5v5h5"/><path d="M4.5 10A8 8 0 1 1 6 16.5"/></svg>
+              </button>
+              <button type="button" class="tool" data-act="rotR" aria-label="Rotate right 90°" title="Rotate right">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 5v5h-5"/><path d="M19.5 10A8 8 0 1 0 18 16.5"/></svg>
+              </button>
+              <button type="button" class="tool" data-act="flipX" aria-label="Flip horizontal" title="Flip horizontal">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18"/><path d="M8 7 3 12l5 5z"/><path d="m16 7 5 5-5 5z"/></svg>
+              </button>
+              <button type="button" class="tool" data-act="flipY" aria-label="Flip vertical" title="Flip vertical">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h18"/><path d="M7 8l5-5 5 5z"/><path d="m7 16 5 5 5-5z"/></svg>
+              </button>
+            </div>
+          </fieldset>
+
+          <fieldset class="group">
+            <legend>Adjust</legend>
+            <div class="row"><label for="brightness">Brightness</label><input type="range" id="brightness" min="0" max="200" value="100" data-adj><output id="brightnessOut" aria-hidden="true">100</output></div>
+            <div class="row"><label for="contrast">Contrast</label><input type="range" id="contrast" min="0" max="200" value="100" data-adj><output id="contrastOut" aria-hidden="true">100</output></div>
+            <div class="row"><label for="saturate">Saturation</label><input type="range" id="saturate" min="0" max="200" value="100" data-adj><output id="saturateOut" aria-hidden="true">100</output></div>
+            <div class="row"><label for="grayscale">Grayscale</label><input type="range" id="grayscale" min="0" max="100" value="0" data-adj><output id="grayscaleOut" aria-hidden="true">0</output></div>
+            <div class="row"><button type="button" class="link" id="adjReset">Reset adjustments</button></div>
+          </fieldset>
+        </fieldset>
+
+        <div class="export">
+          <button type="submit" class="pill pill--accent" id="go" disabled>Convert &amp; download <span aria-hidden="true">▸</span></button>
+          <p class="result" id="result" aria-live="polite"></p>
+        </div>
+      </form>
+    </section>
+
+    <section class="formats" id="formats">
+      <h2>Ten formats in. Ten formats out.</h2>
+      <div class="formats__grid">
+        <div class="card">
+          <h3>Reads</h3>
+          <ul class="list">
+            <li><b>PNG, JPEG, WebP, GIF, BMP, ICO, SVG, AVIF</b><span>decoded by your browser</span></li>
+            <li><b>HEIC / HEIF</b><span>iPhone photos — decoder loads on demand</span></li>
+            <li><b>TIFF</b><span>decoder loads on demand</span></li>
+          </ul>
+        </div>
+        <div class="card card--mist">
+          <h3>Writes</h3>
+          <ul class="list">
+            <li><b>PNG, JPEG, WebP</b><span>native canvas encoders</span></li>
+            <li><b>AVIF</b><span>native where supported, WebAssembly otherwise</span></li>
+            <li><b>GIF</b><span>256-colour palette, keeps transparency</span></li>
+            <li><b>BMP, ICO, TIFF</b><span>written in the page, no server</span></li>
+            <li><b>PDF</b><span>one page, sized to the image</span></li>
+            <li><b>SVG</b><span>image embedded in an SVG wrapper</span></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-foot">
+    <p class="site-foot__mark">Recast</p>
+    <p class="site-foot__line">A static page on GitHub Pages. No server, no uploads, no tracking.</p>
+    <a href="https://github.com/ryanpradnya/image-conversion">View source <span aria-hidden="true">→</span></a>
+  </footer>
+
+  <script src="app.js" defer></script>
+</body>
+</html>

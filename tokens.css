@@ -1,0 +1,83 @@
+/* Hallmark · tokens · theme: studied-DNA (source: styles.refero.design · Monad)
+ * paper oklch(96.6% 0.004 56) · accent oklch(50.7% 0.192 264.5) Lake Blue
+ * display: Newsreader 400 (stand-in for Untitled Serif) · body/UI: JetBrains Mono (stand-in for ABC Diatype Mono)
+ */
+:root {
+  /* Surfaces */
+  --color-paper: oklch(96.6% 0.004 56.4);        /* parchment canvas */
+  --color-paper-2: oklch(94.2% 0.006 59.6);      /* recessed parchment */
+  --color-card: oklch(98.6% 0.003 56.4);         /* lifted card */
+  --color-mist: oklch(88.8% 0.039 267.9);        /* periwinkle panel */
+  --color-mist-soft: oklch(94% 0.02 267.9);
+
+  /* Ink */
+  --color-ink: oklch(0% 0 0);
+  --color-ink-2: oklch(26% 0 0);                 /* off-black */
+  --color-graphite: oklch(42.1% 0.001 17.2);
+  --color-smoke: oklch(52% 0.003 48.7);          /* darkened from 57% for 4.5:1 on paper */
+  --color-rule: oklch(84.2% 0.005 48.7);         /* ash hairline */
+  --color-on-dark: oklch(96.6% 0.004 56.4);
+
+  /* Accent — the only saturated UI fill */
+  --color-accent: oklch(50.7% 0.192 264.5);
+  --color-accent-hover: oklch(44.7% 0.174 264.7);
+  --color-accent-wash: oklch(50.7% 0.192 264.5 / 0.1);
+  --color-focus: oklch(50.7% 0.192 264.5);
+  --color-error: oklch(52% 0.19 29);
+  --color-success: oklch(50% 0.12 155);
+
+  /* Decorative wash stops — never UI fills */
+  --color-sky: oklch(77.7% 0.081 268);
+  --color-mint: oklch(92.4% 0.105 159.3);
+  --color-coral: oklch(77.3% 0.137 37.9);
+  --color-gold: oklch(88.8% 0.086 94.7);
+
+  /* Crop scrim + transparency checker */
+  --color-scrim: oklch(15% 0 0 / 0.55);
+  --color-checker: oklch(90% 0.004 56.4);
+  --color-handle: oklch(100% 0 0);
+
+  /* Type */
+  --font-display: "Newsreader", "Times New Roman", Georgia, serif;
+  --font-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
+
+  --text-caption: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-body: 1rem;
+  --text-lg: 1.25rem;
+  --text-sub: 1.5rem;
+  --text-heading-sm: 2rem;
+  --text-heading: clamp(2rem, 1.4rem + 2.4vw, 3rem);
+  --text-display: clamp(2.75rem, 1.6rem + 5vw, 5rem);
+
+  --tracking-tight: -0.02em;
+  --tracking-mono: -0.025em;
+
+  /* Space — 4pt scale */
+  --space-3xs: 0.25rem;
+  --space-2xs: 0.5rem;
+  --space-xs: 0.75rem;
+  --space-sm: 1rem;
+  --space-md: 1.5rem;
+  --space-lg: 2rem;
+  --space-xl: 2.5rem;
+  --space-2xl: 4rem;
+  --space-3xl: 5rem;
+
+  /* Shape */
+  --radius-card: 40px;
+  --radius-panel: 24px;
+  --radius-sm: 16px;
+  --radius-pill: 100px;
+  --rule: 1px solid var(--color-rule);
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 420ms;
+
+  --max-width: 1432px;
+}

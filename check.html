@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Recast — Encoder Check</title>
+  <meta name="robots" content="noindex">
+  <style>body { font: 14px/1.6 ui-monospace, monospace; margin: 2rem; background: #f6f3f1; color: #242424; } .fail { color: #b3261e; }</style>
+</head>
+<body>
+  <h1>Encoder self-check</h1>
+  <pre id="out">Running…</pre>
+  <script src="app.js"></script>
+  <script>
+    // Encodes a test canvas to every format and checks each file's magic bytes. Open over http(s), not file://.
+    const MAGIC = {
+      png: b => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47,
+      jpeg: b => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
+      webp: b => ascii(b, 0, 4) === 'RIFF' && ascii(b, 8, 12) === 'WEBP',
+      avif: b => ascii(b, 4, 8) === 'ftyp' && /avi[fs]/.test(ascii(b, 8, 12)),
+      gif: b => ascii(b, 0, 4) === 'GIF8',
+      bmp: b => ascii(b, 0, 2) === 'BM',
+      ico: b => b[0] === 0 && b[1] === 0 && b[2] === 1 && b[3] === 0,
+      tiff: b => ['MM\0*', 'II*\0'].includes(ascii(b, 0, 4)),
+      pdf: b => ascii(b, 0, 4) === '%PDF',
+      svg: b => ascii(b, 0, 4) === '<svg',
+    };
+    const ascii = (b, s, e) => String.fromCharCode(...b.slice(s, e));
+
+    (async () => {
+      const c = Object.assign(document.createElement('canvas'), { width: 64, height: 48 });
+      const x = c.getContext('2d');
+      x.fillStyle = '#2b59d1'; x.fillRect(0, 0, 32, 48);
+      x.fillStyle = 'rgba(255,148,115,0.5)'; x.fillRect(32, 0, 32, 48);
+
+      const lines = [];
+      let failed = 0;
+      for (const [key, f] of Object.entries(Recast.FORMATS)) {
+        try {
+          const blob = await f.encode(c, 0.8);
+          const bytes = new Uint8Array(await blob.arrayBuffer());
+          const ok = MAGIC[key](bytes);
+          if (!ok) failed++;
+          lines.push(`${ok ? 'PASS' : 'FAIL'}  ${key.padEnd(5)} ${blob.size} bytes`);
+        } catch (err) {
+          failed++;
+          lines.push(`FAIL  ${key.padEnd(5)} ${err.message || err}`);
+        }
+      }
+
+      // Adjustments: neutral is identity, grayscale 100 equalises channels.
+      const px = () => new ImageData(new Uint8ClampedArray([200, 100, 50, 255]), 1, 1);
+      const same = Recast.adjustPixels(px(), { brightness: 100, contrast: 100, saturate: 100, grayscale: 0 }).data;
+      const gray = Recast.adjustPixels(px(), { brightness: 100, contrast: 100, saturate: 100, grayscale: 100 }).data;
+      const adjOk = same[0] === 200 && same[1] === 100 && same[2] === 50 && gray[0] === gray[1] && gray[1] === gray[2];
+      if (!adjOk) failed++;
+      lines.push(`${adjOk ? 'PASS' : 'FAIL'}  adjust`);
+
+      lines.push('', failed ? `${failed} FAILED` : 'ALL PASS');
+      const out = document.getElementById('out');
+      out.textContent = lines.join('\n');
+      out.className = failed ? 'fail' : '';
+      document.title = failed ? 'FAIL' : 'PASS';
+    })();
+  </script>
+</body>
+</html>
