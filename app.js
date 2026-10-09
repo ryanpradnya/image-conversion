@@ -10,6 +10,7 @@ const CDN = {
   pdf: 'https://cdn.jsdelivr.net/npm/jspdf@4.2.1/+esm',
   avif: 'https://esm.sh/@jsquash/avif@2.1.1/encode',
   webp: 'https://esm.sh/@jsquash/webp@1.5.0/encode',
+  zip: 'https://cdn.jsdelivr.net/npm/fflate@0.8.2/+esm',
 };
 
 const canvas = (w, h) => Object.assign(document.createElement('canvas'), { width: w, height: h });
@@ -212,12 +213,13 @@ if (document.getElementById('app')) {
     qualityRow: $('qualityRow'), quality: $('quality'), qualityOut: $('qualityOut'), bgRow: $('bgRow'), bg: $('bg'),
     cropOut: $('cropOut'), cropReset: $('cropReset'), outW: $('outW'), outH: $('outH'), lock: $('lock'),
     adjReset: $('adjReset'), go: $('go'), result: $('result'),
+    batch: $('batch'), tiles: $('tiles'), batchCount: $('batchCount'), batchSize: $('batchSize'), mode: $('mode'),
   };
   const MAX_SIDE = 16384;
   const MIN_CROP = 8;
 
   const S = {
-    file: null, src: null,
+    file: null, src: null, files: [], bulk: false, scale: 1,
     m: [1, 0, 0, 1],          // display-space rotation/flip matrix, canvas (a, b, c, d) order
     crop: null, aspect: null,
     out: { w: 0, h: 0 }, sizeAuto: true, lock: true,
@@ -242,60 +244,132 @@ if (document.getElementById('app')) {
     el.bgRow.hidden = !f.opaque;
     el.hint.textContent = f.hint ? f.hint() : '';
   }
-  el.fmtList.addEventListener('change', e => { S.fmt = e.target.value; syncFormat(); });
+  el.fmtList.addEventListener('change', e => { S.fmt = e.target.value; syncFormat(); syncGo(); });
   el.quality.addEventListener('input', () => { el.qualityOut.textContent = el.quality.value; });
   syncFormat();
 
-  /* Loading */
-  async function open(file) {
-    if (!file) return;
+  /* Loading — one file opens the editor, several open the batch grid */
+  const plural = n => `${n} image${n === 1 ? '' : 's'}`;
+  function syncGo() {
+    const label = FORMATS[S.fmt].label;
+    el.go.firstChild.textContent = S.bulk ? `Download ${S.files.length} as ${label} · .zip ` : `Download ${label} `;
+  }
+  syncGo();
+
+  function setMode(mode) {
+    S.bulk = mode === 'bulk';
+    el.drop.hidden = mode !== 'empty';
+    el.viewport.hidden = el.stageBar.hidden = mode !== 'single';
+    el.batch.hidden = !S.bulk;
+    document.querySelectorAll('[data-single]').forEach(n => { n.hidden = S.bulk; });
+    document.querySelectorAll('[data-bulk]').forEach(n => { n.hidden = !S.bulk; });
+    el.controls.disabled = el.go.disabled = mode === 'empty';
+    el.mode.textContent = mode === 'empty' ? 'Add an image to start'
+      : S.bulk ? `Batch of ${S.files.length} · settings apply to all` : 'Editing 1 image';
     el.result.textContent = '';
+    syncGo();
+  }
+
+  function reset() {
+    Object.assign(S, { files: [], file: null, src: null });
+    renderTiles();
+    setMode('empty');
+  }
+
+  async function open(list, append = false) {
+    const files = [...(append ? S.files : []), ...list];
+    if (!files.length) return;
     setStatus('');
+    if (files.length > 1) {
+      S.files = files;
+      pressScale(S.bulk ? S.scale : 1);
+      renderTiles();
+      setMode('bulk');
+      return;
+    }
+    const [file] = files;
     try {
       const src = await decode(file, msg => setStatus(msg));
       setStatus('');
-      Object.assign(S, { file, src, m: [1, 0, 0, 1], sizeAuto: true });
+      Object.assign(S, { file, src, files, m: [1, 0, 0, 1], sizeAuto: true });
       el.meta.textContent = `${file.name} · ${src.width} × ${src.height} · ${fmtBytes(file.size)}`;
-      el.drop.hidden = true;
-      el.viewport.hidden = false;
-      el.stageBar.hidden = false;
-      el.controls.disabled = false;
-      el.go.disabled = false;
+      renderTiles();
+      setMode('single');
+      pressScale(1);
       render();
     } catch (err) {
+      if (S.bulk) reset();
       setStatus(err.message.startsWith('Can') ? err.message : `Couldn't open that file: ${err.message}`, true);
-    } finally {
-      el.file.value = '';
     }
   }
 
-  el.file.addEventListener('change', () => open(el.file.files[0]));
-  el.replace.addEventListener('click', () => el.file.click());
-  el.stage.addEventListener('dragover', e => { e.preventDefault(); el.drop.classList.add('is-over'); });
-  el.stage.addEventListener('dragleave', e => { if (!el.stage.contains(e.relatedTarget)) el.drop.classList.remove('is-over'); });
+  // Thumbnails are the original files; the browser shows what it can and HEIC/TIFF fall back to a format badge.
+  const thumbs = new Map();
+  const extOf = f => (f.name.match(/\.([^.]+)$/)?.[1] || f.type.split('/')[1] || 'file').toUpperCase().replace('JPEG', 'JPG');
+  function renderTiles() {
+    for (const [f, url] of thumbs) if (!S.files.includes(f)) { URL.revokeObjectURL(url); thumbs.delete(f); }
+    if (S.files.length < 2) { el.tiles.textContent = ''; return; }
+    el.batchCount.textContent = plural(S.files.length);
+    el.batchSize.textContent = fmtBytes(S.files.reduce((n, f) => n + f.size, 0));
+    el.tiles.innerHTML = S.files.map((f, i) => {
+      if (!thumbs.has(f)) thumbs.set(f, URL.createObjectURL(f));
+      const name = escapeHtml(f.name), ext = escapeHtml(extOf(f));
+      return `<li class="tile" data-i="${i}">
+        <span class="tile__thumb" data-ext="${ext}"><img src="${thumbs.get(f)}" alt="" loading="lazy" decoding="async"></span>
+        <span class="tile__name" title="${name}">${name}</span>
+        <span class="tile__meta">${ext} · ${fmtBytes(f.size)}</span>
+        <button type="button" class="tile__remove" aria-label="Remove ${name}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </li>`;
+    }).join('');
+  }
+  el.tiles.addEventListener('error', e => e.target.remove(), true);
+  el.tiles.addEventListener('click', e => {
+    const btn = e.target.closest('.tile__remove');
+    if (!btn || el.go.hasAttribute('aria-busy')) return;
+    const i = +btn.closest('.tile').dataset.i;
+    open(S.files.filter((_, j) => j !== i)).then(() => {
+      if (S.bulk) el.tiles.querySelectorAll('.tile__remove')[Math.min(i, S.files.length - 1)]?.focus();
+    });
+  });
+  function setTile(i, state, text) {
+    const tile = el.tiles.children[i];
+    if (!tile) return;
+    tile.dataset.state = state;
+    if (text) tile.querySelector('.tile__meta').textContent = text;
+  }
+
+  let append = false;
+  el.file.addEventListener('change', () => { open(el.file.files, append); append = false; el.file.value = ''; });
+  el.replace.addEventListener('click', () => { append = false; el.file.click(); });
+  document.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', () => { append = true; el.file.click(); }));
+  $('clear').addEventListener('click', () => { if (!el.go.hasAttribute('aria-busy')) reset(); });
+  el.stage.addEventListener('dragover', e => { e.preventDefault(); el.stage.classList.add('is-over'); });
+  el.stage.addEventListener('dragleave', e => { if (!el.stage.contains(e.relatedTarget)) el.stage.classList.remove('is-over'); });
   el.stage.addEventListener('drop', e => {
     e.preventDefault();
-    el.drop.classList.remove('is-over');
-    open(e.dataTransfer.files[0]);
+    el.stage.classList.remove('is-over');
+    if (!el.go.hasAttribute('aria-busy')) open(e.dataTransfer.files, S.bulk); // into a batch, dropping adds
   });
   document.addEventListener('paste', e => {
     const item = [...(e.clipboardData?.items || [])].find(i => i.kind === 'file' && i.type.startsWith('image/'));
     if (!item) return;
     const blob = item.getAsFile();
-    open(new File([blob], `pasted.${blob.type.split('/')[1] || 'png'}`, { type: blob.type }));
+    open([new File([blob], `pasted.${blob.type.split('/')[1] || 'png'}`, { type: blob.type })]);
   });
 
   /* Rotate + flip: draw the source through S.m into the visible canvas */
-  function render() {
-    const { src, m } = S;
+  function orient(src, m, c = canvas()) {
     const swap = m[0] === 0;
-    const c = el.view;
     c.width = swap ? src.height : src.width;
     c.height = swap ? src.width : src.height;
     const x = c.getContext('2d');
     x.setTransform(m[0], m[1], m[2], m[3], c.width / 2, c.height / 2);
     x.drawImage(src, -src.width / 2, -src.height / 2);
     x.setTransform(1, 0, 0, 1, 0, 0);
+    return c;
+  }
+  function render() {
+    orient(S.src, S.m, el.view);
     S.crop = fitCrop();
     drawCrop();
   }
@@ -408,6 +482,7 @@ if (document.getElementById('app')) {
       const v = Math.round(+input.value);
       if (!(v >= 1)) return;
       S.sizeAuto = false;
+      pressScale(null);
       S.out[key] = v;
       if (S.lock) { S.out[otherKey] = Math.max(1, Math.round(toOther(v))); other.value = S.out[otherKey]; }
     });
@@ -419,9 +494,15 @@ if (document.getElementById('app')) {
     el.lock.setAttribute('aria-pressed', S.lock);
     if (S.lock) setOut(S.out.w, Math.max(1, Math.round(S.out.w / ratio())));
   });
+  function pressScale(s) {
+    S.scale = s ?? S.scale;
+    for (const b of $('scales').children) b.setAttribute('aria-pressed', +b.dataset.scale === s);
+  }
   $('scales').addEventListener('click', e => {
     const s = +e.target.closest('[data-scale]')?.dataset.scale;
-    if (!s || !S.crop) return;
+    if (!s) return;
+    pressScale(s);
+    if (S.bulk || !S.crop) return;
     S.sizeAuto = s === 1;
     setOut(Math.max(1, Math.round(S.crop.w * s)), Math.max(1, Math.round(S.crop.h * s)));
   });
@@ -439,11 +520,16 @@ if (document.getElementById('app')) {
   });
 
   /* Export */
-  el.panel.addEventListener('submit', async e => {
-    e.preventDefault();
-    if (!S.src || el.go.hasAttribute('aria-busy')) return;
-    const f = FORMATS[S.fmt];
-    let { w, h } = S.out;
+  const baseName = file => file.name.replace(/\.[^.]+$/, '') || 'image';
+  function save(blob, name) {
+    if (S.url) URL.revokeObjectURL(S.url);
+    S.url = URL.createObjectURL(blob);
+    Object.assign(document.createElement('a'), { href: S.url, download: name }).click();
+  }
+  const encodeError = (f, err) => `Couldn't convert to ${f.label}: ${escapeHtml(err?.message || err)}. If this format loads an encoder, check your connection and try again.`;
+
+  async function exportSingle(f) {
+    const { w, h } = S.out;
     const bad = [[el.outW, w], [el.outH, h]].filter(([, v]) => !(v >= 1 && v <= MAX_SIDE));
     if (bad.length) {
       bad.forEach(([input]) => input.setAttribute('aria-invalid', 'true'));
@@ -451,39 +537,83 @@ if (document.getElementById('app')) {
       bad[0][0].focus();
       return;
     }
+    const out = await encodeOne(el.view, S.crop, w, h, f, S.adj);
+    const name = `${baseName(S.file)}.${f.ext}`;
+    save(out.blob, name);
+    const pct = Math.max(-99, Math.round((out.blob.size / S.file.size - 1) * 100));
+    showResult(`<b>${escapeHtml(name)}</b> · ${out.w} × ${out.h} · ${fmtBytes(out.blob.size)} (${pct > 0 ? '+' : ''}${pct}%) · <a href="${S.url}" download="${escapeHtml(name)}">Download again</a>`);
+  }
+
+  async function exportBatch(f) {
+    const n = S.files.length, entries = {};
+    let failed = 0;
+    S.files.forEach((_, i) => setTile(i, 'queued'));
+    for (const [i, file] of S.files.entries()) {
+      el.go.firstChild.textContent = `Converting ${i + 1} of ${n} `;
+      el.go.style.setProperty('--progress', `${(i / n) * 100}%`);
+      setTile(i, 'working');
+      let src = null;
+      try {
+        src = await decode(file, () => {});
+        const size = v => clamp(Math.round(v * S.scale), 1, MAX_SIDE);
+        const { blob, w, h } = await encodeOne(src, { x: 0, y: 0, w: src.width, h: src.height }, size(src.width), size(src.height), f, ADJ_DEFAULT);
+        let name = `${baseName(file)}.${f.ext}`;
+        for (let k = 2; name in entries; k++) name = `${baseName(file)}-${k}.${f.ext}`;
+        entries[name] = new Uint8Array(await blob.arrayBuffer());
+        setTile(i, 'done', `${w} × ${h} · ${fmtBytes(blob.size)}`);
+      } catch {
+        failed++;
+        setTile(i, 'error', src ? `Couldn't convert to ${f.label}` : "Couldn't read this file");
+      }
+    }
+    el.go.style.setProperty('--progress', '100%');
+    const done = n - failed;
+    if (!done) { showResult(`None of the ${n} images could be converted to ${f.label}. Check each file's message above.`, true); return; }
+    const { zipSync } = await import(CDN.zip);
+    // Images are already compressed; storing skips pointless deflate work.
+    const zip = new Blob([zipSync(entries, { level: 0 })], { type: 'application/zip' });
+    const name = `recast-${done}-${f.ext}.zip`;
+    save(zip, name);
+    showResult(`<b>${done} ${f.label} file${done === 1 ? '' : 's'}</b> · ${fmtBytes(zip.size)} · <a href="${S.url}" download="${name}">Download again</a>` +
+      (failed ? `<br><span class="result__warn">${failed} skipped, marked in red.</span>` : ''));
+  }
+
+  el.panel.addEventListener('submit', async e => {
+    e.preventDefault();
+    if (!S.files.length || el.go.hasAttribute('aria-busy')) return;
+    const f = FORMATS[S.fmt];
+    el.result.textContent = '';
+    el.go.setAttribute('aria-busy', 'true');
+    el.go.firstChild.textContent = 'Converting ';
+    try {
+      await (S.bulk ? exportBatch(f) : exportSingle(f));
+    } catch (err) {
+      showResult(encodeError(f, err), true);
+    } finally {
+      el.go.removeAttribute('aria-busy');
+      el.go.style.removeProperty('--progress');
+      syncGo();
+    }
+  });
+
+  // Crop `view`, scale to w × h, apply adjustments and background, encode.
+  async function encodeOne(view, crop, w, h, f, adj) {
     if (f.maxSide && Math.max(w, h) > f.maxSide) {
       const k = f.maxSide / Math.max(w, h);
       w = Math.max(1, Math.round(w * k));
       h = Math.max(1, Math.round(h * k));
     }
-
-    el.go.setAttribute('aria-busy', 'true');
-    el.go.firstChild.textContent = 'Converting ';
-    try {
-      // ponytail: single-pass downscale; add stepped halving if big reductions look soft.
-      const c = canvas(w, h);
-      const x = c.getContext('2d');
-      x.imageSmoothingQuality = 'high';
-      const { x: cx, y: cy, w: cw, h: ch } = S.crop;
-      x.drawImage(el.view, cx, cy, cw, ch, 0, 0, w, h);
-      if (Object.keys(ADJ_DEFAULT).some(k => S.adj[k] !== ADJ_DEFAULT[k])) x.putImageData(adjustPixels(pixels(c), S.adj), 0, 0);
-      if (f.opaque) {
-        x.globalCompositeOperation = 'destination-over';
-        x.fillStyle = el.bg.value;
-        x.fillRect(0, 0, w, h);
-      }
-      const blob = await f.encode(c, +el.quality.value / 100);
-      const name = `${S.file.name.replace(/\.[^.]+$/, '') || 'image'}.${f.ext}`;
-      if (S.url) URL.revokeObjectURL(S.url);
-      S.url = URL.createObjectURL(blob);
-      Object.assign(document.createElement('a'), { href: S.url, download: name }).click();
-      const pct = Math.max(-99, Math.round((blob.size / S.file.size - 1) * 100));
-      showResult(`<b>${escapeHtml(name)}</b> · ${w} × ${h} · ${fmtBytes(blob.size)} (${pct > 0 ? '+' : ''}${pct}%) · <a href="${S.url}" download="${escapeHtml(name)}">Download again</a>`);
-    } catch (err) {
-      showResult(`Couldn't convert to ${f.label}: ${escapeHtml(err?.message || err)}. If this format loads an encoder, check your connection and try again.`, true);
-    } finally {
-      el.go.removeAttribute('aria-busy');
-      el.go.firstChild.textContent = 'Convert & download ';
+    // ponytail: single-pass downscale; add stepped halving if big reductions look soft.
+    const c = canvas(w, h);
+    const x = c.getContext('2d');
+    x.imageSmoothingQuality = 'high';
+    x.drawImage(view, crop.x, crop.y, crop.w, crop.h, 0, 0, w, h);
+    if (Object.keys(ADJ_DEFAULT).some(k => adj[k] !== ADJ_DEFAULT[k])) x.putImageData(adjustPixels(pixels(c), adj), 0, 0);
+    if (f.opaque) {
+      x.globalCompositeOperation = 'destination-over';
+      x.fillStyle = el.bg.value;
+      x.fillRect(0, 0, w, h);
     }
-  });
+    return { blob: await f.encode(c, +el.quality.value / 100), w, h };
+  }
 }

@@ -1,6 +1,6 @@
 # Recast
 
-A browser-only image converter. Crop, resize, rotate, flip and adjust an image, then save it as PNG, JPEG, WebP, AVIF, GIF, BMP, ICO, TIFF, PDF or SVG. Images stay on the device; nothing is uploaded.
+A browser-only image converter. Crop, resize, rotate, flip and adjust an image, then save it as PNG, JPEG, WebP, AVIF, GIF, BMP, ICO, TIFF, PDF or SVG. Drop one image to open the editor; drop several to convert them all at once. Batch mode shows every file as a thumbnail, applies the format, quality, background and a resize percentage to each, and downloads the results as one `.zip`. Images stay on the device; nothing is uploaded.
 
 It is plain HTML, CSS and JavaScript. There is no build step and no `package.json`.
 
